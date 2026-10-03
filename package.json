@@ -1,0 +1,45 @@
+{
+  "name": "il-e2e-agent",
+  "version": "0.1.0",
+  "description": "Natural-language browser tests (tester-army/e2e) run by the Claude Code installed on each developer's machine, on their own login",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vishalmishraa22/il-e2e-agent.git"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "il-e2e-agent": "./bin/il-e2e-agent.mjs"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "tsc -p tsconfig.json",
+    "postinstall": "node bin/prune-bundled-claude.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "dependencies": {
+    "@e2e-dev/web": "0.11.2",
+    "ai": "7.0.127",
+    "ai-sdk-provider-claude-code": "4.3.3",
+    "e2e": "0.16.0",
+    "playwright": "1.63.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
