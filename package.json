@@ -1,6 +1,6 @@
 {
   "name": "il-e2e-agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Natural-language browser tests (tester-army/e2e) run by the Claude Code installed on each developer's machine, on their own login",
   "type": "module",
   "repository": {

@@ -14,6 +14,12 @@ test('a visitor reaches checkout', async ({ app, agent, browser }) => {
 });
 ```
 
+One command starts your dev server, runs the tests and stops the server again:
+
+```bash
+npm run test:e2e
+```
+
 ## Contents
 
 - [How it works](#how-it-works)
@@ -58,114 +64,191 @@ Agent steps count against **your own** Claude plan's usage limits.
 
 ## Installation
 
-Install as a dev dependency of your app:
-
 ```bash
-npm install --save-dev github:vishalmishraa22/il-e2e-agent
+npm install --save-dev il-e2e-agent
 npx playwright install chromium
 ```
 
-Then create this layout in your project:
+Project layout:
 
 ```
 your-app/
-├── package.json                 add a "test:e2e" script (below)
+├── package.json               il-e2e-agent devDependency + "test:e2e" script
+├── il-e2e-agent.config.ts     dev-server command, network policy
+├── .gitignore                 + the two lines below
 └── e2e/
-    ├── il-e2e-agent.config.ts   app URL and network policy
     ├── tests/
-    │   └── *.e2e.ts             your tests
-    ├── support/                 optional shared helpers
-    └── .gitignore
+    │   └── *.e2e.ts           your tests
+    └── support/               optional shared helpers
 ```
 
-`e2e/.gitignore`. Run output stays local; the replay cache is committed so teammates replay recorded steps:
+`package.json`:
+
+```json
+{
+  "scripts": {
+    "test:e2e": "il-e2e-agent run",
+    "test:e2e:fresh": "il-e2e-agent run --no-cache"
+  }
+}
+```
+
+`.gitignore`: run output stays local; the replay cache is committed so teammates replay recorded steps:
 
 ```gitignore
 .e2e/*
 !.e2e/cache/
 ```
 
-`package.json` scripts:
-
-```json
-{
-  "scripts": {
-    "test:e2e": "il-e2e-agent run --config e2e/il-e2e-agent.config.ts",
-    "test:e2e:fresh": "il-e2e-agent run --config e2e/il-e2e-agent.config.ts --no-cache"
-  }
-}
-```
+`il-e2e-agent run` reads `il-e2e-agent.config.ts` from the directory it runs in, which for an npm
+script is the project root.
 
 ## Framework setup
 
-Tests run against your app's **dev server**. Pick a port for tests (3100 below) so a test run never
-collides with the dev server you already use, and start it before running the tests. Alternatively,
-let the runner start it with `app.command` (see [Configuration](#configuration)).
+The runner starts your dev server for each run and stops it when the run ends, whether it passed,
+failed or was interrupted. Use `url: 'http://127.0.0.1:0'`: port `0` makes the runner pick a free
+port every time and pass it to your command as `{port}`, so a test run never collides with a dev
+server you already have open. Bind to `127.0.0.1` explicitly, because `localhost` can resolve to IPv6
+only.
+
+Avoid a fixed port. Some dev servers silently move to another port when the requested one is taken,
+and the run would then test whatever else answers on it.
+
+Every example below also uses `readyUrl`, a page the runner waits for before starting tests, so the
+first compile happens before the first test.
 
 ### Next.js
 
-```json
-{ "scripts": { "dev:e2e": "next dev -p 3100" } }
+```ts
+// il-e2e-agent.config.ts
+import { defineConfig } from 'il-e2e-agent';
+
+export default defineConfig({
+  tests: ['e2e/**/*.e2e.ts'],
+  app: {
+    url: 'http://127.0.0.1:0',
+    command: { executable: 'npx', args: ['next', 'dev', '-H', '127.0.0.1', '-p', '{port}'], startupTimeout: 300_000 },
+    readyUrl: 'http://127.0.0.1:{port}/',
+  },
+});
 ```
 
-`next build` type-checks every `.ts` file that `tsconfig.json` includes. Exclude the test folder so
-production builds never depend on test code:
+`next build` type-checks every `.ts` file `tsconfig.json` includes. Exclude the test files so production
+builds never depend on them:
 
 ```jsonc
 // tsconfig.json
-{ "exclude": ["node_modules", "e2e"] }
+{ "exclude": ["node_modules", "e2e", "il-e2e-agent.config.ts"] }
 ```
 
 ### Nuxt
 
-```json
-{ "scripts": { "dev:e2e": "nuxt dev --port 3100" } }
+```ts
+// il-e2e-agent.config.ts
+import { defineConfig } from 'il-e2e-agent';
+
+export default defineConfig({
+  tests: ['e2e/**/*.e2e.ts'],
+  app: {
+    url: 'http://127.0.0.1:0',
+    command: { executable: 'npx', args: ['nuxt', 'dev', '--host', '127.0.0.1', '--port', '{port}'], startupTimeout: 300_000 },
+    readyUrl: 'http://127.0.0.1:{port}/',
+  },
+});
 ```
 
-Add the test folder to `.nuxtignore` so the dev server's file watcher skips it (test runs write files
-under `e2e/.e2e/`):
+Keep the dev server's file watcher away from the tests and their output. In `.nuxtignore`:
 
 ```gitignore
 e2e/**
+.e2e/**
 ```
 
-If CI runs `nuxi typecheck`, also exclude `e2e/` there through `typescript.tsConfig.exclude` in
-`nuxt.config.ts`.
+If CI runs `nuxi typecheck`, exclude `e2e/` and `il-e2e-agent.config.ts` there through
+`typescript.tsConfig.exclude` in `nuxt.config.ts`.
 
 ### React (Vite)
 
-```json
-{ "scripts": { "dev:e2e": "vite --port 3100 --strictPort" } }
+```ts
+// il-e2e-agent.config.ts
+import { defineConfig } from 'il-e2e-agent';
+
+export default defineConfig({
+  tests: ['e2e/**/*.e2e.ts'],
+  app: {
+    url: 'http://127.0.0.1:0',
+    command: { executable: 'npx', args: ['vite', '--host', '127.0.0.1', '--port', '{port}', '--strictPort'] },
+    readyUrl: 'http://127.0.0.1:{port}/',
+  },
+});
 ```
 
-No further changes are needed with the default Vite templates: `tsconfig.app.json` only includes
-`src/`, and Vite's watcher only reacts to files your app imports.
+No other changes are needed with the default Vite templates: their TypeScript configs only include
+`src/` and `vite.config.ts`.
 
 ### Create React App
 
-```json
-{ "scripts": { "dev:e2e": "PORT=3100 BROWSER=none react-scripts start" } }
+```ts
+// il-e2e-agent.config.ts
+import { defineConfig } from 'il-e2e-agent';
+
+export default defineConfig({
+  tests: ['e2e/**/*.e2e.ts'],
+  app: {
+    url: 'http://127.0.0.1:0',
+    command: {
+      executable: 'npx',
+      args: ['react-scripts', 'start'],
+      env: { HOST: '127.0.0.1', PORT: '{port}', BROWSER: 'none' },
+      startupTimeout: 300_000,
+    },
+    readyUrl: 'http://127.0.0.1:{port}/',
+  },
+});
 ```
+
+### Using your own dev script
+
+To run the dev server through an npm script, for example to set environment flags, pass the host and
+port after `--`:
+
+```ts
+command: { executable: 'npm', args: ['run', 'dev', '--', '--host', '127.0.0.1', '--port', '{port}'] },
+```
+
+The command runs without a shell and inherits only `PATH`, `HOME` and the temp-directory variables.
+Pass anything else it needs through `command.env`.
 
 ### Server-side tracking
 
-The network policy below controls what the **test browser** can reach. Calls your **server** makes
-(for example a Next.js route handler or Nuxt server route forwarding to an analytics or CRM API)
-are outside its reach. If your app does this in development, turn it off in the `dev:e2e` script
-with your app's own environment flags, and block the forwarding routes with `blockPaths`.
+The [network policy](#network-policy) controls what the **test browser** can reach. Calls your
+**server** makes (for example a route handler forwarding events to an analytics or CRM API) are outside
+its reach. If your app does this in development, switch it off for test runs with your app's own
+environment flags in `command.env`, and block the forwarding routes with `blockPaths`.
 
 ## Configuration
 
-`e2e/il-e2e-agent.config.ts`:
+A complete `il-e2e-agent.config.ts`:
 
 ```ts
 import { defineConfig } from 'il-e2e-agent';
 
 export default defineConfig({
-  app: { url: 'http://localhost:3100' },
+  tests: ['e2e/**/*.e2e.ts'],
   timeout: 600_000,
   actionTimeout: 8_000,
   maxSteps: 40,
+  app: {
+    url: 'http://127.0.0.1:0',
+    command: {
+      executable: 'npx',
+      args: ['nuxt', 'dev', '--host', '127.0.0.1', '--port', '{port}'],
+      env: { ANALYTICS_ENABLED: 'false' },
+      startupTimeout: 300_000,
+      log: '.e2e/logs/dev-server.log',
+    },
+    readyUrl: 'http://127.0.0.1:{port}/',
+  },
   network: {
     allow: ['*.stripe.com', '*.stripe.network', 'fonts.googleapis.com', 'fonts.gstatic.com'],
     readOnly: ['api-staging.example.com'],
@@ -180,12 +263,15 @@ except `targets` and `agents`, which it builds for you, plus:
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `app` | required | `url` of the app under test. Optionally `command` to let the runner start it, e.g. `{ executable: 'npm', args: ['run', 'dev:e2e'], cwd: '..', reuseExisting: true }`. |
+| `app` | required | `url` of the app, `command` that starts it, and `readyUrl` to wait for. See [Framework setup](#framework-setup). |
+| `tests` | `e2e/**/*.e2e.ts`, `tests/**/*.e2e.ts` | Test file globs, relative to the config file. |
 | `model` | `'sonnet'` | Claude model for agent steps: `'sonnet'`, `'haiku'` or `'opus'`. |
 | `effort` | `'low'` | Reasoning effort per agent step. Higher values think longer on every turn. |
 | `maxSteps` | `25` | Actions a single `agent.act` may take. Raise it for long multi-screen steps. |
 | `browser` | e2e defaults | Playwright web-engine options, e.g. `{ viewport: { width: 1280, height: 900 } }`. |
 | `network` | localhost only | Which hosts the test browser may reach. `false` disables the guard. |
+
+`command.log` keeps the dev server's output in a file instead of discarding it.
 
 ### Network policy
 
@@ -245,30 +331,29 @@ documented at [e2e.tester.army/docs](https://e2e.tester.army/docs).
 ## Running tests
 
 ```bash
-npm run dev:e2e                                  # terminal 1: the app on the test port
-
-npm run test:e2e                                 # terminal 2: all tests
-npm run test:e2e -- e2e/tests/checkout.e2e.ts    # one file
-npm run test:e2e -- --headed                     # watch the browser
-npm run test:e2e -- --reporter list,markdown     # writes e2e/.e2e/summary.md and failure pages
-npm run test:e2e:fresh                           # ignore recordings and run every step live
+npm run test:e2e                                  # all tests
+npm run test:e2e -- e2e/tests/checkout.e2e.ts     # one file, path relative to the project root
+npm run test:e2e -- --headed                      # watch the browser
+npm run test:e2e -- --reporter list,markdown      # also writes .e2e/summary.md and failure pages
+npm run test:e2e:fresh                            # ignore recordings and run every step live
 ```
 
-Failure details, screenshots and traces are written to `e2e/.e2e/`. Start with
-`e2e/.e2e/failures/` when a test fails.
+Failure details, screenshots and traces are written to `.e2e/`. Start with `.e2e/failures/` when a
+test fails, and `.e2e/logs/dev-server.log` (if `command.log` is set) when the app didn't start.
 
 The CLI sets `E2E_TELEMETRY_DISABLED=1` unless you set it yourself.
 
 ## Replay cache
 
-- **First run of a step:** Claude performs it live, and the actions are recorded in `e2e/.e2e/cache/`.
+- **First run of a step:** Claude performs it live, and the actions are recorded in `.e2e/cache/`.
 - **Later runs:** the recording is replayed with no model call.
 - **The page changes:** the replay hands over to Claude where it stopped matching, and the step is
   recorded again.
-- **Changing a test's name, an instruction or its params** starts that step from scratch.
+- **Renaming or moving a test file, changing a test's name, an instruction or its params** starts that
+  step from scratch. Recordings are keyed by the test's path relative to the config file.
 
-**Commit `e2e/.e2e/cache/`** so everyone on the team replays the same recordings instead of running
-every step live on their own plan. Review cache changes in pull requests like any other test data.
+**Commit `.e2e/cache/`** so everyone on the team replays the same recordings instead of running every
+step live on their own plan. Review cache changes in pull requests like any other test data.
 
 ## Keeping it out of production builds
 
@@ -281,6 +366,8 @@ npm pkg delete devDependencies.il-e2e-agent && npm install --include=dev
 ```
 
 This changes the build's working copy only. Verified with both `npm install` and `npm ci` (npm 11).
+Also exclude `il-e2e-agent.config.ts` and `e2e/` from any type-check your build runs (see
+[Next.js](#nextjs)), since the package isn't installed there.
 
 AWS Amplify (`amplify.yml`):
 
@@ -309,12 +396,13 @@ GitHub Actions:
 | Symptom | Cause and fix |
 | --- | --- |
 | `Claude Code was not found` | Install Claude Code and run `claude auth login`, or set `IL_E2E_CLAUDE_PATH`. |
-| `il-e2e-agent.config.ts not found` | Pass `--config e2e/il-e2e-agent.config.ts`, as the scripts above do, or run from the folder that holds it. |
-| `APP_UNREACHABLE` | The app isn't running on the configured URL. Start `npm run dev:e2e` first, or configure `app.command`. |
+| `il-e2e-agent.config.ts not found` | Run from the project root (npm scripts do), or pass `--config <path>`. |
+| `APP_UNREACHABLE` | The dev server didn't answer `readyUrl` within `startupTimeout`. Read `command.log`; raise `startupTimeout` for slow first compiles. |
+| Tests run against the wrong app | The config uses a fixed port that something else was already using. Use `url: 'http://127.0.0.1:0'` with `{port}`. |
 | A page renders broken or incomplete | A resource it needs is blocked. Run with `E2E_NETWORK_LOG=1` and add the host to `network.allow`. |
 | A step takes long or exhausts its steps | Split the instruction into smaller `agent.act` calls, or raise `maxSteps`. |
-| A recorded step keeps re-running live | Its instruction, params or test name changed, or a value differs on every run. Use `unique()` for those. |
-| The dev server misbehaves while tests run | Exclude `e2e/` from its file watcher (`.nuxtignore` for Nuxt). |
+| A recorded step keeps re-running live | Its instruction, params, test name or file path changed, or a value differs on every run. Use `unique()` for those. |
+| The dev server misbehaves while tests run | Exclude `e2e/` and `.e2e/` from its file watcher (`.nuxtignore` for Nuxt). |
 
 ## Limitations
 
